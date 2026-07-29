@@ -40,12 +40,12 @@ function cleanup() {
     rm -f ${tfile}
 }
 
-if  ! black --check --verbose . >& ${tfile}; then
+if  ! black --check --diff --verbose . >& ${tfile}; then
     cat ${tfile} | grep -v "good job" | grep -v "wasn't modified on disk since last run" >&2 || true
     echo >&2 ""
     echo >&2 "Please fix your code locally with: black ."
     echo >&2 "This will automatically format the code as needed."
-    echo >&2 "Note that the Black version used is: " "$BLACK_FORMATTER_VERSION."
+    echo >&2 "Note that the Black version used is: $(black --version | head -n 1)."
     exit 1
 fi
 
