@@ -75,15 +75,11 @@ publish:unittests:
     - if: '$CI_COMMIT_TAG =~ /^saas-[a-zA-Z0-9.]+$/'
       when: never
     - when: on_success
-  image: curlimages/curl-base
+  image: registry.gitlab.com/northern.tech/mender/mender-test-containers/codecov:master
   dependencies:
     - test:unit
   script:
-    - curl -Os https://cli.codecov.io/latest/alpine/codecov
-    - curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM
-    - sha256sum -c codecov.SHA256SUM
-    - chmod +x codecov
-    - ./codecov upload-process
+    - codecov upload-process
       --fail-on-error
       --git-service github
       --slug mendersoftware/${CI_PROJECT_NAME}
