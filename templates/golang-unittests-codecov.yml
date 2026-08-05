@@ -117,5 +117,5 @@ publish:unittests:
       --slug mendersoftware/${CI_PROJECT_NAME}
       --sha ${CI_COMMIT_SHA}
       --pr $(echo "${CI_COMMIT_BRANCH}" | sed 's/^pr_//')
-      --file $(find tests/unit-coverage -name 'coverage.txt' | tr '\n' ',' | sed 's/,$//')
+      $(find tests/unit-coverage -name 'coverage.txt' | sed 's/^/--file /')
       --flag unittests
