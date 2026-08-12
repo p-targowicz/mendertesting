@@ -1,21 +1,48 @@
+// renovate.json5 - Mender dependency update configuration for mendertesting
+// See Documentation/dependency-updates.md in mender-qa for the process.
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
   "extends": [
     "config:recommended",
     ":gitSignOff",
     ":rebaseStalePrs"
   ],
-  "reviewers": ["team:qa-dependabot-reviewers"],
 
-  "packageRules": [
-    {
-      // TODO: remove some of these when we ditch dependabot
-      "matchCategories": ["python", "docker", "ci"],
-      "enabled": false
-    },
-  ],
+  // CODEOWNERS drives reviewer assignment - keep its dependency file entries current.
+  "reviewersFromCodeOwners": true,
 
+  // fix(deps): <desc>, per renovate.json5.sample in mender-qa.
+  "semanticCommits": "enabled",
+  "semanticCommitType": "fix",
+  "semanticCommitScope": "deps",
+
+  // Fallback window for weeks with no merges; the renovate CI job is the primary trigger.
+  "schedule": ["after 10pm on Monday", "before 6am on Tuesday"],
+
+  // Was prHourlyLimit 0 (unlimited) while Dependabot still owned gomod.
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
+
+  // Only master. 3.3.x and 3.4.x have been dormant since 2022-10-03.
+  "baseBranchPatterns": ["master"],
+
+  // Security PRs bypass the schedule and automerge when CI is green.
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "automerge": true,
+    "automergeType": "pr",
+    "labels": ["security"]
+  },
+
+  // vendor/ is committed, so a bare go.mod bump would leave the tree inconsistent.
+  "postUpdateOptions": ["gomodTidy", "gomodVendor"],
+
+  // Versions this repo pins for other repos to consume, none of which a standard
+  // manager can see.
   "customManagers": [
+    // MENDER_ARTIFACT_VERSION in the flat docker-acceptance check template.
     {
       "customType": "regex",
       "managerFilePatterns": ["/.gitlab-ci-check-docker-acceptance.yml/"],
@@ -27,6 +54,7 @@
       "extractVersionTemplate": "^v?(?<version>.*)$",
       "versioningTemplate": "semver"
     },
+    // mender_artifact_version as a component input default.
     {
       "customType": "regex",
       "managerFilePatterns": ["/templates/docker-acceptance-codecov.yml/"],
@@ -38,6 +66,7 @@
       "extractVersionTemplate": "^v?(?<version>.*)$",
       "versioningTemplate": "semver"
     },
+    // renovate_runner_version as a component input default.
     {
       "customType": "regex",
       "managerFilePatterns": ["/templates/renovate.yml/"],
@@ -48,8 +77,37 @@
       "datasourceTemplate": "gitlab-tags",
       "registryUrlTemplate": "https://gitlab.com",
       "versioningTemplate": "semver"
-    },
+    }
   ],
 
-  "prHourlyLimit": 0
+  "packageRules": [
+    // config:recommended pulls in :semanticPrefixFixDepsChoreOthers, which forces
+    // semanticCommitType back to "chore" for any dep whose manager does not tag it
+    // with an npm/pip style depType. Must stay BEFORE the gitlabci rule: rules apply
+    // in order and the last match wins, so gitlabci keeps its own type.
+    {
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "fix"
+    },
+
+    // CI file updates get ci: instead of fix(deps):
+    {
+      "matchManagers": ["gitlabci", "gitlabci-include"],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": ""
+    },
+
+    // Go: one PR for all modules.
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "golang-dependencies",
+      "groupSlug": "golang-dependencies"
+    },
+
+    // vendor/ contains third-party go.mod files - do not treat them as our own.
+    {
+      "matchFileNames": ["vendor/**"],
+      "enabled": false
+    }
+  ]
 }
