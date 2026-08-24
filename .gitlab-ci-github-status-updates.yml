@@ -33,13 +33,16 @@ stages:
         local hdr_f="$(mktemp)"
         local code="$(curl -sS -o "$body_f" -D "$hdr_f" -w '%{http_code}' \
                         -H "$GITHUB_AUTH" -d "$json" "$GITHUB_STATUS_API_URL")"
+        local remaining="$(sed -n 's/^[Xx]-[Rr]ate[Ll]imit-[Rr]emaining: *\([0-9]*\).*/\1/p' "$hdr_f" | tail -1)"
         local ret=0
 
         case "$code" in
           2??)
+            if [ -n "$remaining" ]; then
+              echo "msg=github_status_update result=ok remaining=$remaining"
+            fi
             ;;
           403|429)
-            local remaining="$(sed -n 's/^[Xx]-[Rr]ate[Ll]imit-[Rr]emaining: *\([0-9]*\).*/\1/p' "$hdr_f" | tail -1)"
             local retry_after="$(sed -n 's/^[Rr]etry-[Aa]fter: *\([0-9]*\).*/\1/p' "$hdr_f" | tail -1)"
             if [ "$remaining" = "0" ] || [ -n "$retry_after" ]; then
               echo "msg=github_status_update result=rate_limited code=$code remaining=${remaining:-0} retry_after=${retry_after:-0}" 1>&2
