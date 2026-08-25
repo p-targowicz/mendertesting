@@ -21,6 +21,7 @@ stages:
     when:
       - runner_system_failure
       - stuck_or_timeout_failure
+      - script_failure
   before_script:
     - |
       send_status() {
@@ -28,16 +29,43 @@ stages:
         local message="$2"
 
         local json="$(printf "$GITHUB_STATUS_API_JSON_F" "$status" "$CI_PIPELINE_URL" "$message")"
+        local body_f="$(mktemp)"
+        local hdr_f="$(mktemp)"
+        local code="$(curl -sS -o "$body_f" -D "$hdr_f" -w '%{http_code}' \
+                        -H "$GITHUB_AUTH" -d "$json" "$GITHUB_STATUS_API_URL")"
+        local remaining="$(sed -n 's/^[Xx]-[Rr]ate[Ll]imit-[Rr]emaining: *\([0-9]*\).*/\1/p' "$hdr_f" | tail -1)"
         local ret=0
-        local output="$(curl -f -H "$GITHUB_AUTH" -d "$json" "$GITHUB_STATUS_API_URL")" || ret=$?
-        if [ $ret -ne 0 ]; then
-          if echo "$output" | grep -q "This SHA and context has reached the maximum number of statuses"; then
-            # This can happen for pipelines that keep running on the same master commit over and
-            # over, such as mender-api-docs.
-            return 0
-          fi
-          echo "$output" 1>&2
-        fi
+
+        case "$code" in
+          2??)
+            if [ -n "$remaining" ]; then
+              echo "msg=github_status_update result=ok remaining=$remaining"
+            fi
+            ;;
+          403|429)
+            local retry_after="$(sed -n 's/^[Rr]etry-[Aa]fter: *\([0-9]*\).*/\1/p' "$hdr_f" | tail -1)"
+            if [ "$remaining" = "0" ] || [ -n "$retry_after" ]; then
+              echo "msg=github_status_update result=rate_limited code=$code remaining=${remaining:-0} retry_after=${retry_after:-0}" 1>&2
+            else
+              echo "msg=github_status_update result=forbidden code=$code" 1>&2
+              cat "$body_f" 1>&2
+              ret=1
+            fi
+            ;;
+          *)
+            if grep -q "This SHA and context has reached the maximum number of statuses" "$body_f"; then
+              # This can happen for pipelines that keep running on the same master commit over and
+              # over, such as mender-api-docs.
+              :
+            else
+              echo "msg=github_status_update result=failed code=$code" 1>&2
+              cat "$body_f" 1>&2
+              ret=1
+            fi
+            ;;
+        esac
+
+        rm -f "$body_f" "$hdr_f"
         return $ret
       }
 
@@ -47,12 +75,6 @@ github:start:
   stage: .pre
   script:
     - send_status pending "Pipeline running on Gitlab"
-  retry:
-    max: 2
-    when:
-      - runner_system_failure
-      - stuck_or_timeout_failure
-      - script_failure
 
 github:success:
   extends: .github_status_template
@@ -63,12 +85,6 @@ github:success:
   when: on_success
   script:
     - send_status success "Pipeline passed on Gitlab"
-  retry:
-    max: 2
-    when:
-      - runner_system_failure
-      - stuck_or_timeout_failure
-      - script_failure
 
 github:failure:
   extends: .github_status_template
@@ -79,10 +95,4 @@ github:failure:
   when: on_failure
   script:
     - send_status failure "Pipeline failed on Gitlab"
-  retry:
-    max: 2
-    when:
-      - runner_system_failure
-      - stuck_or_timeout_failure
-      - script_failure
 
