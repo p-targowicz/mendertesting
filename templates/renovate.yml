@@ -31,6 +31,16 @@ renovate:
   tags:
     - $[[ inputs.runner ]]
   needs: []
+  # Upstream sets resource_group: production, which serialises renovate across every
+  # pipeline in the project. Scope the lock to renovate so a nightly and the renovate
+  # schedule do not queue behind each other.
+  resource_group: renovate-$CI_PROJECT_PATH_SLUG
+  # Upstream caches only the repository cache. The datasource cache is a sibling
+  # directory, so without this the GitHub lookups are repeated from cold every run.
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-renovate"
+    paths:
+      - renovate/cache/renovate/
   variables:
     RENOVATE_PLATFORM: "github"
     RENOVATE_ENDPOINT: "https://api.github.com"
